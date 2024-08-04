@@ -54,51 +54,61 @@ class Aircraft:
         self.last_update_time = None  # Will be set using seen_pos
 
     def to_cot_xml(self) -> bytes:
-        """Convert the aircraft's telemetry data to a Cursor-on-Target (CoT) XML message."""
-        event = etree.Element('event')
-        event.set('version', '2.0')
-        event.set('uid', f"aircraft-{self.hex_id}")  # Ensure this UID is stable and consistent
-        event.set('type', 'a-f-G-U-C')  # Example type for an aircraft
-        event.set('time', datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.995Z'))
-        event.set('start', datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.995Z'))
-        event.set('stale', (datetime.datetime.utcnow() + datetime.timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%S.995Z'))  # Extended stale time
-        event.set('how', 'm-g')
+    """Convert the aircraft's telemetry data to a Cursor-on-Target (CoT) XML message."""
+    event = etree.Element('event')
+    event.set('version', '2.0')
+    event.set('uid', f"aircraft-{self.hex_id}")  # Ensure this UID is stable and consistent
+    event.set('type', 'a-f-G-U-C')  # Example type for an aircraft
+    event.set('time', datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.995Z'))
+    event.set('start', datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.995Z'))
+    event.set('stale', (datetime.datetime.utcnow() + datetime.timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%S.995Z'))  # Extended stale time
+    event.set('how', 'm-g')
 
-        # Use alt_geom for elevation (hae) if available, otherwise fallback to alt_baro
-        hae_value = self.alt_geom if self.alt_geom is not None else self.alt_baro
+    point = etree.SubElement(event, 'point')
+    point.set('lat', str(self.lat))
+    point.set('lon', str(self.lon))
+    
+    # Handle altitude or "ground" case
+    if self.alt_geom is not None:
+        point.set('hae', str(self.alt_geom))
+    elif self.alt_baro == "ground":
+        point.set('hae', "0")  # Set hae to 0 for ground
+    elif self.alt_baro is not None:
+        point.set('hae', str(self.alt_baro))
+    
+    point.set('ce', '9999999.0')
+    point.set('le', '9999999.0')
 
-        if hae_value is None:
-            hae_value = 0  # Set a clear indication that no altitude data was available
+    detail = etree.SubElement(event, 'detail')
 
-        point = etree.SubElement(event, 'point')
-        point.set('lat', str(self.lat))
-        point.set('lon', str(self.lon))
-        point.set('hae', str(hae_value))
-        point.set('ce', '9999999.0')
-        point.set('le', '9999999.0')
+    contact = etree.SubElement(detail, 'contact')
+    contact.set('endpoint', '')
+    contact.set('phone', '')
+    contact.set('callsign', self.callsign)
 
-        detail = etree.SubElement(event, 'detail')
+    # Add track information
+    track = etree.SubElement(detail, 'track')
+    track.set('course', str(self.track))
+    track.set('speed', str(self.speed))
 
-        contact = etree.SubElement(detail, 'contact')
-        contact.set('endpoint', '')
-        contact.set('phone', '')
-        contact.set('callsign', self.callsign)
+    # Construct remarks, including special case for "ground"
+    remarks_text = f"Speed: {self.speed} knots, Track: {self.track}°, Squawk: {self.squawk}"
+    if self.alt_baro == "ground":
+        remarks_text += ", Altitude: On the ground"
+    elif self.alt_baro or self.alt_geom:
+        altitude = self.alt_geom if self.alt_geom is not None else self.alt_baro
+        remarks_text += f", Altitude: {altitude} ft"
 
-        # Add track information
-        track = etree.SubElement(detail, 'track')
-        track.set('course', str(self.track))
-        track.set('speed', str(self.speed))
+    remarks = etree.SubElement(detail, 'remarks')
+    remarks.text = remarks_text
 
-        remarks = etree.SubElement(detail, 'remarks')
-        remarks.text = f"Speed: {self.speed} knots, Track: {self.track}°, Squawk: {self.squawk}"
+    color = etree.SubElement(detail, 'color')
+    color.set('argb', '-256')  # Default color, may show as a standard dot in ATAK
 
-        color = etree.SubElement(detail, 'color')
-        color.set('argb', '-256')  # Default color, may show as a standard dot in ATAK
+    usericon = etree.SubElement(detail, 'usericon')
+    usericon.set('iconsetpath', 'Civ/Air/Cessna.png')  # Path for a small civilian aircraft icon
 
-        usericon = etree.SubElement(detail, 'usericon')
-        usericon.set('iconsetpath', 'Civ/Air/Cessna.png')  # Path for a small civilian aircraft icon
-
-        return etree.tostring(event, pretty_print=True, xml_declaration=True, encoding='UTF-8')
+    return etree.tostring(event, pretty_print=True, xml_declaration=True, encoding='UTF-8')
 
 
 class TAKClient:
