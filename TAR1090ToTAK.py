@@ -51,7 +51,7 @@ class Aircraft:
         self.track = track
         self.squawk = squawk
         self.callsign = callsign
-        self.last_update_time = time.time()
+        self.last_update_time = None  # Will be set using seen_pos
 
     def to_cot_xml(self) -> bytes:
         """Convert the aircraft's telemetry data to a Cursor-on-Target (CoT) XML message."""
@@ -66,6 +66,9 @@ class Aircraft:
 
         # Use alt_geom for elevation (hae) if available, otherwise fallback to alt_baro
         hae_value = self.alt_geom if self.alt_geom is not None else self.alt_baro
+
+        if hae_value is None:
+            hae_value = 0  # Set a clear indication that no altitude data was available
 
         point = etree.SubElement(event, 'point')
         point.set('lat', str(self.lat))
@@ -249,7 +252,9 @@ def tar1090_to_cot(tar1090_url, tak_host=None, tak_port=None, tak_tls_context=No
                         aircrafts[hex_id] = Aircraft(hex_id, lat, lon, alt_baro, alt_geom, speed, track, squawk, callsign)
 
                     aircraft_obj = aircrafts[hex_id]
-                    aircraft_obj.last_update_time = time.time()
+
+                    # Update the last update time based on the position timestamp
+                    aircraft_obj.last_update_time = time.time() - seen_pos
 
                     # Convert aircraft data to CoT XML
                     cot_xml = aircraft_obj.to_cot_xml()
