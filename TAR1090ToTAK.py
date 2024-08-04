@@ -45,8 +45,8 @@ class Aircraft:
         self.hex_id = hex_id
         self.lat = lat
         self.lon = lon
-        self.alt = alt_baro  # Use alt_baro as fallback
-        self.alt_geom = alt_geom  # Use alt_geom if available
+        self.alt_baro = alt_baro  # Barometric altitude
+        self.alt_geom = alt_geom  # Geometric altitude
         self.speed = speed
         self.track = track
         self.squawk = squawk
@@ -65,7 +65,7 @@ class Aircraft:
         event.set('how', 'm-g')
 
         # Use alt_geom for elevation (hae) if available, otherwise fallback to alt_baro
-        hae_value = self.alt_geom if self.alt_geom is not None else self.alt
+        hae_value = self.alt_geom if self.alt_geom is not None else self.alt_baro
 
         point = etree.SubElement(event, 'point')
         point.set('lat', str(self.lat))
@@ -225,14 +225,22 @@ def tar1090_to_cot(tar1090_url, tak_host=None, tak_port=None, tak_tls_context=No
             for aircraft in data.get('aircraft', []):
                 # Extract relevant aircraft data
                 hex_id = aircraft.get('hex', 'unknown')
-                lat = aircraft.get('lat', None)
-                lon = aircraft.get('lon', None)
-                alt_baro = aircraft.get('alt_baro', 0)
-                alt_geom = aircraft.get('alt_geom', None)
+                lat = aircraft.get('lat')
+                lon = aircraft.get('lon')
+                alt_baro = aircraft.get('alt_baro')  # Do not default to zero
+                alt_geom = aircraft.get('alt_geom')
                 speed = aircraft.get('gs', 0)
                 track = aircraft.get('track', 0)
                 squawk = aircraft.get('squawk', '')
                 callsign = aircraft.get('flight', '').strip()
+
+                # Handle 'seen' and 'seen_pos' to filter out stale data
+                seen_pos = aircraft.get('seen_pos', float('inf'))
+                seen = aircraft.get('seen', float('inf'))
+
+                # Ignore aircraft with no recent position or message updates
+                if seen_pos > 60 or seen > 60:
+                    continue
 
                 # Only process aircraft with valid latitude and longitude
                 if lat is not None and lon is not None:
